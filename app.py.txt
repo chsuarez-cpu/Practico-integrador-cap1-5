@@ -3,14 +3,13 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Simulación M/M/1", layout="wide")
+st.set_page_config(page_title="Modelo M/M/1", layout="wide")
 
 # =========================
-# FUNCIONES TEÓRICAS
+# FUNCIONES
 # =========================
 def mm1_metrics(lmbda, mu):
     rho = lmbda / mu
-
     if rho >= 1:
         return None
 
@@ -35,53 +34,43 @@ def prob_wait_greater(lmbda, mu, t):
     return np.exp(-(mu - lmbda) * t)
 
 
-# =========================
-# SIMULACIÓN MONTE CARLO
-# =========================
 def simulate_mm1(lmbda, mu, n=1000):
     arrivals = np.cumsum(np.random.exponential(1/lmbda, n))
     service_times = np.random.exponential(1/mu, n)
 
-    start_service = np.zeros(n)
-    end_service = np.zeros(n)
-    wait_times = np.zeros(n)
+    start = np.zeros(n)
+    end = np.zeros(n)
+    wait = np.zeros(n)
 
     for i in range(n):
         if i == 0:
-            start_service[i] = arrivals[i]
+            start[i] = arrivals[i]
         else:
-            start_service[i] = max(arrivals[i], end_service[i-1])
+            start[i] = max(arrivals[i], end[i-1])
 
-        wait_times[i] = start_service[i] - arrivals[i]
-        end_service[i] = start_service[i] + service_times[i]
+        wait[i] = start[i] - arrivals[i]
+        end[i] = start[i] + service_times[i]
 
-    df = pd.DataFrame({
+    return pd.DataFrame({
         "Llegada": arrivals,
-        "Inicio": start_service,
-        "Fin": end_service,
-        "Espera": wait_times
+        "Inicio": start,
+        "Fin": end,
+        "Espera": wait
     })
 
-    return df
-
 
 # =========================
-# UI
+# INTERFAZ
 # =========================
-st.title("📞 Centro de Emergencias - Modelo M/M/1")
+st.title("📞 Centro de Emergencias - M/M/1")
 
-col1, col2 = st.columns(2)
-
-with col1:
-    lmbda = st.number_input("Tasa de llegada (λ)", value=18.0)
-    mu = st.number_input("Tasa de servicio (μ)", value=24.0)
-
-with col2:
-    t_umbral = st.number_input("Tiempo umbral (min)", value=8.0)
-    n_prob = st.number_input("Número mínimo de llamadas", value=4)
+lmbda = st.number_input("Tasa de llegada (λ)", value=18.0)
+mu = st.number_input("Tasa de servicio (μ)", value=24.0)
+t_umbral = st.number_input("Tiempo umbral (min)", value=8.0)
+n_prob = st.number_input("Número mínimo de llamadas", value=4)
 
 # =========================
-# CÁLCULO
+# RESULTADOS
 # =========================
 metrics = mm1_metrics(lmbda, mu)
 
@@ -90,19 +79,14 @@ if metrics is None:
 else:
     rho, P0, L, Lq, W, Wq = metrics
 
-    st.subheader("📊 Métricas del sistema")
+    st.subheader("📊 Métricas")
 
-    col1, col2, col3, col4 = st.columns(4)
-
-    col1.metric("Utilización (ρ)", round(rho, 3))
-    col2.metric("L", round(L, 3))
-    col3.metric("Lq", round(Lq, 3))
-    col4.metric("W (min)", round(W*60, 2))
-
-    st.metric("Wq (min)", round(Wq*60, 2))
-
-    # Probabilidades
-    st.subheader("📈 Probabilidades")
+    st.write(f"Utilización (ρ): {round(rho,3)}")
+    st.write(f"P0: {round(P0,3)}")
+    st.write(f"L: {round(L,3)}")
+    st.write(f"Lq: {round(Lq,3)}")
+    st.write(f"W (min): {round(W*60,2)}")
+    st.write(f"Wq (min): {round(Wq*60,2)}")
 
     p_geq = prob_geq_n(rho, n_prob)
     p_wait = prob_wait_greater(lmbda, mu, t_umbral/60)
@@ -118,42 +102,38 @@ else:
 
     fig, ax = plt.subplots()
     ax.bar(n_vals, p_vals)
-    ax.set_title("Distribución de estados Pn")
+    ax.set_title("Distribución Pn")
     st.pyplot(fig)
 
     # =========================
     # SIMULACIÓN
     # =========================
-    st.subheader("🎲 Simulación Monte Carlo")
+    st.subheader("🎲 Simulación")
 
     n_sim = st.slider("Número de simulaciones", 100, 5000, 1000)
+    df = simulate_mm1(lmbda, mu, n_sim)
 
-    df_sim = simulate_mm1(lmbda, mu, n_sim)
-
-    st.dataframe(df_sim.head())
+    st.dataframe(df.head())
 
     st.write("Espera promedio simulada (min):",
-             round(df_sim["Espera"].mean()*60, 2))
+             round(df["Espera"].mean()*60, 2))
 
-    # =========================
-    # GRÁFICO ESPERA
-    # =========================
     fig2, ax2 = plt.subplots()
-    ax2.hist(df_sim["Espera"]*60, bins=30)
-    ax2.set_title("Distribución de tiempos de espera (min)")
+    ax2.hist(df["Espera"]*60, bins=30)
+    ax2.set_title("Distribución de espera")
     st.pyplot(fig2)
 
     # =========================
-    # INTERPRETACIÓN AUTOMÁTICA
+    # INTERPRETACIÓN
     # =========================
     st.subheader("🧠 Interpretación")
 
     if rho < 0.7:
         st.success("Sistema eficiente")
     elif rho < 0.85:
-        st.warning("Sistema moderadamente cargado")
+        st.warning("Sistema moderado")
     else:
-        st.error("Sistema crítico - riesgo alto")
+        st.error("Sistema crítico (alto riesgo)")
 
     if Wq*60 > 5:
-        st.error("Tiempo de espera alto para emergencias")
+        st.error("Tiempo de espera elevado para emergencias")
